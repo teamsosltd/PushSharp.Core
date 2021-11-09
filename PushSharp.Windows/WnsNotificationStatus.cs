@@ -14,6 +14,8 @@ namespace PushSharp.Windows
         public WnsNotification Notification { get; set; }
 
         public System.Net.HttpStatusCode HttpStatus { get; set; }
+
+        public override string ToString() => $"MsgId={MessageId}, HttpStatus={HttpStatus}, NotifStatus={NotificationStatus}, DevConnStatus={DeviceConnectionStatus}, Debug={DebugTrace}, Error={ErrorDescription}";
     }
 
     public enum WnsNotificationSendStatus

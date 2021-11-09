@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.Extensions.Logging;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,10 +17,10 @@ namespace PushSharp.Common
             ServicePointManager.Expect100Continue = false;
         }
 
-        public ServiceBroker (IServiceConnectionFactory<TNotification> connectionFactory)
+        public ServiceBroker (IServiceConnectionFactory<TNotification> connectionFactory, ILogger<ServiceBroker<TNotification>> logger)
         {
             ServiceConnectionFactory = connectionFactory;
-
+            _logger = logger;
             lockWorkers = new object ();
             workers = new List<ServiceWorker<TNotification>> ();
             running = false;
@@ -43,6 +44,7 @@ namespace PushSharp.Common
         List<ServiceWorker<TNotification>> workers;
         object lockWorkers;
         bool running;
+        private readonly ILogger<ServiceBroker<TNotification>> _logger;
 
         public virtual void QueueNotification (TNotification notification)
         {
@@ -84,11 +86,11 @@ namespace PushSharp.Common
                 var all = (from sw in workers
                                        select sw.WorkerTask).ToArray ();
 
-                Log.Info ("Stopping: Waiting on Tasks");
+                _logger.LogInformation ("Stopping: Waiting on Tasks");
 
                 Task.WaitAll (all);
 
-                Log.Info ("Stopping: Done Waiting on Tasks");
+                _logger.LogInformation("Stopping: Done Waiting on Tasks");
 
                 workers.Clear ();
             }
@@ -114,12 +116,12 @@ namespace PushSharp.Common
 
                 // Scale up
                 while (workers.Count < ScaleSize) {
-                    var worker = new ServiceWorker<TNotification> (this, ServiceConnectionFactory.Create ());
+                    var worker = new ServiceWorker<TNotification> (this, ServiceConnectionFactory.Create (), _logger);
                     workers.Add (worker);
                     worker.Start ();
                 }
 
-                Log.Debug ("Scaled Changed to: " + workers.Count);
+                _logger.LogDebug ("Scaled Changed to: " + workers.Count);
             }
         }
 
@@ -140,11 +142,13 @@ namespace PushSharp.Common
 
     class ServiceWorker<TNotification> where TNotification : INotification
     {
-        public ServiceWorker (IServiceBroker<TNotification> broker, IServiceConnection<TNotification> connection)
+        private readonly ILogger _logger;
+
+        public ServiceWorker (IServiceBroker<TNotification> broker, IServiceConnection<TNotification> connection, ILogger logger)
         {
             Broker = broker;
             Connection = connection;
-
+            _logger = logger;
             CancelTokenSource = new CancellationTokenSource ();
         }
 
@@ -185,32 +189,32 @@ namespace PushSharp.Common
                             continue;
                        
                         try {
-                            Log.Info ("Waiting on all tasks {0}", toSend.Count ());
+                            _logger.LogInformation("Waiting on all tasks {0}", toSend.Count ());
                             await Task.WhenAll (toSend).ConfigureAwait (false);
-                            Log.Info ("All Tasks Finished");
+                            _logger.LogInformation("All Tasks Finished");
                         } catch (Exception ex) {
-                            Log.Error ("Waiting on all tasks Failed: {0}", ex);
+                            _logger.LogInformation("Waiting on all tasks Failed: {0}", ex);
 
                         }
-                        Log.Info ("Passed WhenAll");
+                        _logger.LogInformation("Passed WhenAll");
 
                     } catch (Exception ex) {
-                        Log.Error ("Broker.Take: {0}", ex);
+                        _logger.LogError (ex, "Broker.Take:");
                     }
                 }
 
                 if (CancelTokenSource.IsCancellationRequested)
-                    Log.Info ("Cancellation was requested");
+                    _logger.LogInformation("Cancellation was requested");
                 if (Broker.IsCompleted)
-                    Log.Info ("Broker IsCompleted");
+                    _logger.LogInformation("Broker IsCompleted");
 
-                Log.Debug ("Broker Task Ended");
+                _logger.LogDebug ("Broker Task Ended");
             }, CancelTokenSource.Token, TaskCreationOptions.LongRunning | TaskCreationOptions.DenyChildAttach, TaskScheduler.Default).Unwrap ();
 				
             WorkerTask.ContinueWith (t => {
                 var ex = t.Exception;
                 if (ex != null)
-                    Log.Error ("ServiceWorker.WorkerTask Error: {0}", ex);
+                    _logger.LogError (ex, "ServiceWorker.WorkerTask Error");
             }, TaskContinuationOptions.OnlyOnFaulted);              
         }
 
