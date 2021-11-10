@@ -62,7 +62,7 @@ namespace PushSharp.Windows
 
         public async Task Send (WnsNotification notification)
         {
-            _logger.LogDebug($"Start Send notification, type={notification.Type}, uri={notification.ChannelUri}");
+            _logger.LogDebug($"Start Send notification, type={notification.Type}");
 
             try
             {
